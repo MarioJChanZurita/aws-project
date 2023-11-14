@@ -1,5 +1,5 @@
-from .person import Person
+from .persona import Persona
 
-class Alumno(Person):
+class Alumno(Persona):
     matricula: str
     promedio: float

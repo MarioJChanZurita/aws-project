@@ -1,6 +1,6 @@
-from .person import Person
+from .persona import Persona
 from pydantic import Field
 
-class Profesor(Person):
+class Profesor(Persona):
     numeroEmpleado: str = Field(...)
     horasClase: int = Field(...)

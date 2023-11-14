@@ -41,7 +41,7 @@ def eliminar_alumno(id: int):
     for i, alumno in enumerate(ALUMNOS):
         if alumno['id'] == id:
             ALUMNOS.pop(i)
-            return actualizar_alumno
+            return alumno
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Alumno no encontrado"

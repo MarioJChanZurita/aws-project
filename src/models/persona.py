@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
+from typing import Optional
+
 
 class Persona(BaseModel):
-    id: int = Field(...)
+    id: Optional[int]
     nombres: str = Field(...)
     apellidos: str = Field(...)

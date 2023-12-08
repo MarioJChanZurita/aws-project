@@ -48,7 +48,7 @@ class S3():
     def subir(self, file, filename):
         self.service.upload_file(
             file,
-            BUCKET_NAME,
+            const.BUCKET_NAME,
             filename,
             ExtraArgs={
                 "ACL": "public-read",
@@ -62,28 +62,29 @@ class AWSServices(Enum):
     sns = SNS
 
 class AWS():
-
-    def __init__(self, service: AWSServices):
+    
+    def get_service(self, service: AWSServices):
         match(service):
-            case service.DynamoDB:
+            case service.dynamodb:
                 return DynamoDB(self.crear_recurso('dynamodb'))
-            case service.S3:
+            case service.s3:
                 return S3(self.crear_cliente('s3'))
-            case service.SNS:
+            case service.sns:
                 return SNS(self.crear_cliente('sns'))
+        
 
-    def crear_cliente(self):
+    def crear_cliente(self, type: str):
         return boto3.client(
-            self.type,
+            type,
             aws_access_key_id=const.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=const.AWS_SECRET_ACCESS_KEY,
             aws_session_token=const.AWS_SESSION_TOKEN,
             region_name=const.REGION_NAME
         )
     
-    def crear_recurso(self):
+    def crear_recurso(self, type: str):
         return boto3.resource(
-            self.type,
+            type,
             aws_access_key_id=const.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=const.AWS_SECRET_ACCESS_KEY,
             aws_session_token=const.AWS_SESSION_TOKEN,

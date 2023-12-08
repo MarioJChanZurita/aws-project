@@ -66,7 +66,7 @@ class AlumnoServicio():
         return success_response("Alumno eliminado")
 
     def subir_foto_perfil(self, id: int, foto: UploadFile):
-        s3 = AWS(AWSServices.s3)
+        s3 = AWS().get_service(AWSServices.s3)
         alumno = self.obtener_alumno(id)
         if not alumno:
             raise HTTPException(
@@ -93,7 +93,7 @@ class AlumnoServicio():
         )
               
     def enviar_email(self, id: int):
-        sns = AWS(AWSServices.sns)
+        sns = AWS().get_service(AWSServices.sns)
         alumno = self.obtener_alumno(id)
         if not alumno:
             raise HTTPException(
@@ -111,7 +111,7 @@ class AlumnoServicio():
         return success_response("Correo enviado")
 
     def login(self, id: int, password: str):
-        dynamodb = AWS(AWSServices.dynamodb)
+        dynamodb = AWS().get_service(AWSServices.dynamodb)
         alumno: Query[dbAlumno] = self.obtener_alumno(id)
         if not alumno:
             raise HTTPException(
@@ -131,7 +131,7 @@ class AlumnoServicio():
             'active': True,
             'sessionString': token
         }
-        dynamodb.agregar_dynamodb(
+        dynamodb.agregar(
             table_name=DYNAMODB_TABLE,
             item=sesion
         )
@@ -141,7 +141,7 @@ class AlumnoServicio():
         )
             
     def is_authorize(self, id: int, token: str):
-        dynamodb = AWS(AWSServices.dynamodb)
+        dynamodb = AWS().get_service(AWSServices.dynamodb)
         alumno: dbAlumno = self.obtener_alumno(id)
         if not alumno:
             raise HTTPException(
@@ -161,7 +161,7 @@ class AlumnoServicio():
         return success_response("Sesión válida")
         
     def logout(self, id: int, sessionString: str):
-        dynamodb = AWS(AWSServices.dynamodb)
+        dynamodb = AWS().get_service(AWSServices.dynamodb)
         alumno: dbAlumno = self.obtener_alumno(id)
         if not alumno:
             raise HTTPException(

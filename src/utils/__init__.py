@@ -1,4 +1,4 @@
 from .const import *
-from .MySQL import *
+from .database import *
 from .AWS import *
 from .helpers import *

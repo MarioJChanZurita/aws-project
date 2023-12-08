@@ -4,9 +4,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import src.controllers as Controller
-from dotenv import load_dotenv
+from src.utils.database import engine, Base
 
-load_dotenv()
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 

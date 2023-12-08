@@ -1,167 +1,187 @@
-import src.schemas as Schemas
+from tempfile import NamedTemporaryFile
+import time
+import uuid
+from fastapi import HTTPException, Query, UploadFile, status
+from fastapi.responses import JSONResponse
+from src.schemas import Alumno as dbAlumno
 from src.models import Alumno
+from sqlalchemy.orm import Session
+from src.utils import AWS, AWSServices
+from src.utils.const import BUCKET_NAME, DYNAMODB_TABLE, SNS_TOPIC_ARN
+from src.utils.helpers import success_response, generate_token
+from boto3.dynamodb.conditions import Attr
 
 
+class AlumnoServicio():
 
-class AlumnoService():
+    def __init__(self, db: Session):
+        self.db = db
 
+    def obtener_alumnos(self):
+        alumnos: dbAlumno | None = self.db.query(dbAlumno).all()
+        return alumnos
 
-    def obtener_alumnos():
-        return ALUMNOS
-
-    def obtener_alumno(id: int):
-        for alumno in ALUMNOS:
-            if alumno['id'] == id:
-                return alumno
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Alumno no encontrado"
-        )
-    
-    def agregar_alumnos(alumno: Alumno):
-        ALUMNOS.append(alumno.dict())
-        return {'id': alumno.id}
-
-    def actualizar_alumno(id: int, data: Alumno):
-        for alumno in ALUMNOS:
-            if alumno['id'] == id:
-                alumno.update(data.dict(exclude_defaults=True))
-                return alumno
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Alumno no encontrado"
-        )
-
-    def eliminar_alumno(id: int):
-        for i, alumno in enumerate(ALUMNOS):
-            if alumno['id'] == id:
-                ALUMNOS.pop(i)
-                return alumno
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Alumno no encontrado"
-        )
-
-    def upload_profile_picture(self, id: int, photo: UploadFile, db: Session) -> JSONResponse:
-        student: Schemas.Alumno = self.obtener_alumno(id, db)
-        if not student:
-            raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Alumno no encontrado"
-                )
-        try:
-            with NamedTemporaryFile(delete=False) as tmp:
-                tmp.write(photo.file.read())
-                file = tmp.name
-                filename = photo.filename
-                upload_file_to_s3(file, filename)
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Error al subir imagen"
-            )
-        student.fotoPerfilUrl = f"https://{env.get('BUCKET_NAME')}.s3.amazonaws.com/{filename}"
-        db.commit()
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "fotoPerfilUrl": student.fotoPerfilUrl
-            }
-        )
-            
-        
-    def send_email(self, id: int, db: Session) -> JSONResponse:
-        student: DBStudent = StudentsService().get_student(id, db)
-        if not student:
-            raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Alumno no encontrado"
-                )
-        publish_message_to_sns(
-            topic_arn=env.get("TOPIC_ARN"),
-            message=f"Nombre: {student.nombres}\nApellido: {student.apellidos}\nCalificaciones: {student.promedio}"
-        )
-        return success_response("Correo enviado")
-            
-        
-    def login(self, id: int, password: str, db: Session) -> JSONResponse:
-        student: Query[DBStudent] = StudentsService().get_student(id, db)
-        if not student:
-            raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Alumno no encontrado"
-                )
-        if student.password != password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Contraseña incorrecta"
-            )
-        sessionString: str = get_random_string(128)
-        put_item_to_dynamodb(
-            table_name=env.get('DYNAMODB_TABLE'),
-            item={
-                'id': str(uuid.uuid4()),
-                'fecha': int(time.time()),
-                'alumnoId': id,
-                'active': True,
-                'sessionString': sessionString
-            }
-        )
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content={
-                "sessionString": sessionString
-            }
-        )
-            
-            
-        
-    def verify_session(self, id: int, sessionString: str, db: Session) -> JSONResponse:
-        student: DBStudent = StudentsService().get_student(id, db)
-        if not student:
+    def obtener_alumno(self, id: int):
+        alumno: dbAlumno | None = self.db.query(dbAlumno).filter(dbAlumno.id == id).first()
+        if not alumno:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Alumno no encontrado"
             )
-        response: list[dict] | list = scan_table(
-            table_name=env.get('DYNAMODB_TABLE'),
-            filter_expression=Attr('sessionString').eq(sessionString)
+        return alumno
+
+    def agregar_alumnos(self, alumno: Alumno):
+        alumno: dbAlumno = dbAlumno(**alumno.model_dump())
+        self.db.add(alumno)
+        self.db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={
+                "id": alumno.id
+            }
         )
-        if response:
-            is_active = response[0].get('active', False)
-        if not response or not is_active:
+
+    def actualizar_alumno(self, id: int, item: Alumno):
+        item = item.model_dump()
+        item.pop("id", None)
+        alumno: Query[dbAlumno] = self.db.query(dbAlumno).filter(dbAlumno.id == id)
+        if alumno:
+            alumno.update(item)
+            self.db.commit()
+            return success_response("Alumno actualizado")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alumno no encontrado"
+        )
+
+    def eliminar_alumno(self, id: int):
+        alumno: Query[dbAlumno] = self.obtener_alumno(id)
+        if not alumno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alumno no encontrado"
+            )
+        self.db.delete(alumno)
+        self.db.commit()
+        return success_response("Alumno eliminado")
+
+    def subir_foto_perfil(self, id: int, foto: UploadFile):
+        s3 = AWS(AWSServices.s3)
+        alumno = self.obtener_alumno(id)
+        if not alumno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Alumno no encontrado"
+            )
+        try:
+            with NamedTemporaryFile(delete=False) as tmp:
+                tmp.write(foto.file.read())
+                s3.subir(tmp.name, foto.filename)
+        except Exception as ex:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=str(ex)
+            )
+        alumno.fotoPerfilUrl = "https://{buket_name}.s3.amazonaws.com/{filename}".format(
+            buket_name=BUCKET_NAME,
+            filename=foto.filename
+        )
+        self.db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"fotoPerfilUrl": alumno.fotoPerfilUrl}
+        )
+              
+    def enviar_email(self, id: int):
+        sns = AWS(AWSServices.sns)
+        alumno = self.obtener_alumno(id)
+        if not alumno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alumno no encontrado"
+            )
+        sns.publicar_msg(
+            topic_arn=SNS_TOPIC_ARN,
+            message="Nombre: {nombre}\nApellido: {apellidos}\nCalificaciones: {promedio}".format(
+                nombre=alumno.nombres,
+                apellidos=alumno.apellidos,
+                promedio=alumno.promedio
+            )
+        )
+        return success_response("Correo enviado")
+
+    def login(self, id: int, password: str):
+        dynamodb = AWS(AWSServices.dynamodb)
+        alumno: Query[dbAlumno] = self.obtener_alumno(id)
+        if not alumno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alumno no encontrado"
+            )
+        if alumno.password != password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contraseña incorrecta"
+            )
+        token: str = generate_token(128)
+        sesion = {
+            'id': str(uuid.uuid4()),
+            'fecha': int(time.time()),
+            'alumnoId': id,
+            'active': True,
+            'sessionString': token
+        }
+        dynamodb.agregar_dynamodb(
+            table_name=DYNAMODB_TABLE,
+            item=sesion
+        )
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={ "sessionString": token }
+        )
+            
+    def is_authorize(self, id: int, token: str):
+        dynamodb = AWS(AWSServices.dynamodb)
+        alumno: dbAlumno = self.obtener_alumno(id)
+        if not alumno:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Alumno no encontrado"
+            )
+        sesion: list[dict] | list = dynamodb.escanear_tabla(
+            table_name=DYNAMODB_TABLE,
+            filter_expression=Attr('sessionString').eq(token)
+        )
+        is_active = sesion and sesion[0].get('active', False)
+        if not is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Sesión inválida"
             )
         return success_response("Sesión válida")
         
-
-    def logout(self, id: int, sessionString: str, db: Session) -> JSONResponse:
-        student: DBStudent = StudentsService().get_student(id, db)
-        if not student:
+    def logout(self, id: int, sessionString: str):
+        dynamodb = AWS(AWSServices.dynamodb)
+        alumno: dbAlumno = self.obtener_alumno(id)
+        if not alumno:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Alumno no encontrado"
             )
-        response: list[dict] = scan_table(
-            table_name=env.get('DYNAMODB_TABLE'),
+        sesion: list[dict] = dynamodb.escanear_tabla(
+            table_name=DYNAMODB_TABLE,
             filter_expression=Attr('sessionString').eq(sessionString)
         )
-        id = response[0].get('id', False)
-        if not response or not id:
+        id = sesion and sesion[0].get('id', False)
+        if not id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Sesión inválida"
             )
-        update_item_in_dynamodb(
-            table_name=env.get('DYNAMODB_TABLE'),
-            key={
-                'id': id
-            },
+        dynamodb.actualizar(
+            table_name=DYNAMODB_TABLE,
+            key={ 'id': id },
             update_expression='SET active = :active',
-            expression_attribute_values={
-                ':active': False
-            }
+            expression_attribute_values={':active': False}
         )
         return success_response("Sesión cerrada")

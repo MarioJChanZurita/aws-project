@@ -1,6 +1,8 @@
-from typing import Annotated, Union
-from fastapi import APIRouter, Request, status, Body, Path, HTTPException
+from fastapi import APIRouter, status, Depends
 from src.models import Profesor
+from src.services import ProfesorServicio as Servicio
+from sqlalchemy.orm import Session
+from src.utils import get_db
 
 PROFESORES = []
 
@@ -8,42 +10,37 @@ profesores = APIRouter(prefix='/profesores', tags=["Profesores"], include_in_sch
 
 
 @profesores.get("", status_code=status.HTTP_200_OK)
-def obtener_profesores():
-    return PROFESORES
+def obtener_profesores(
+    db: Session = Depends(get_db)
+):
+    return Servicio(db).obtener_profesores()
+    
 
 @profesores.get("/{id}", status_code=status.HTTP_200_OK)
-def obtener_profesor(id: int):
-    for profesor in PROFESORES:
-        if profesor['id'] == id:
-            return profesor
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Profesor no encontrado"
-    )
+def obtener_profesor(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    return Servicio(db).obtener_profesor(id)
 
 @profesores.post("", status_code=status.HTTP_201_CREATED)
-def agregar_profesores(profesor: Profesor):
-    PROFESORES.append(profesor.dict())
-    return {'id': profesor.id}
+def agregar_profesores(
+    profesor: Profesor,
+    db: Session = Depends(get_db)
+):
+    return Servicio(db).agregar_profesores(profesor)
 
 @profesores.put("/{id}", status_code=status.HTTP_200_OK)
-def actualizar_profesor(id: int, data: Profesor):
-    for profesor in PROFESORES:
-        if profesor['id'] == id:
-            profesor.update(data.dict(exclude_defaults=True))
-            return profesor
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Profesor no encontrado"
-    )
+def actualizar_profesor(
+    id: int, 
+    data: Profesor,
+    db: Session = Depends(get_db)
+):
+    return Servicio(db).actualizar_profesor(id, data)
 
 @profesores.delete("/{id}", status_code=status.HTTP_200_OK)
-def eliminar_profesor(id: int):
-    for i, profesor in enumerate(PROFESORES):
-        if profesor['id'] == id:
-            PROFESORES.pop(i)
-            return profesor
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Profesor no encontrado"
-    )
+def eliminar_profesor(
+    id: int,
+    db: Session = Depends(get_db)
+):
+    return Servicio(db).eliminar_profesor(id)

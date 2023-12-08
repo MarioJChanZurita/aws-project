@@ -3,7 +3,7 @@ import random
 from fastapi.responses import JSONResponse
 from fastapi import status
 
-def generate_random_code(length: int) -> str:
+def generate_token(length: int) -> str:
     letters: str = string.ascii_lowercase + string.digits
     result_str: str = ''.join(random.choice(letters) for i in range(length))
     return result_str
